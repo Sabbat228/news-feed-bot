@@ -11,10 +11,10 @@ type Item struct {
 	SourceName string
 }
 
-type Sources struct {
+type Source struct {
 	ID        int64
 	Name      string
-	FeedUrl   string
+	FeedURL   string
 	CreatedAt time.Time
 }
 
