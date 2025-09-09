@@ -1,0 +1,67 @@
+package summary
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"github.com/sashabaranov/go-openai"
+	"log"
+	"strings"
+	"sync"
+)
+
+type OpenAISummaraizer struct {
+	client *openai.Client
+	prompt string
+	enable bool
+	mu     sync.Mutex
+}
+
+func NewOpenAiSummarizer(apiKey string, prompt string) *OpenAISummaraizer {
+	s := &OpenAISummaraizer{
+		client: openai.NewClient(apiKey),
+		prompt: prompt,
+	}
+
+	log.Printf("openai summarizer enabled: %v", apiKey != "")
+	if apiKey != "" {
+		s.enable = true
+	}
+	return s
+}
+
+func (s *OpenAISummaraizer) Summarize(ctx context.Context, text string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.enable {
+		return "", errors.New("openai summarizer is disabled")
+	}
+
+	request := openai.ChatCompletionRequest{
+		Model: "DeepSeek-V3.1",
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleSystem,
+				Content: fmt.Sprintf("%s%s", text, s.prompt),
+			},
+		},
+		MaxTokens:   256,
+		Temperature: 0.7,
+		TopP:        1,
+	}
+
+	resp, err := s.client.CreateChatCompletion(ctx, request)
+	if err != nil {
+		return "", err
+	}
+
+	rawSummary := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if strings.HasSuffix(rawSummary, ".") {
+		return rawSummary, nil
+	}
+
+	sentences := strings.Split(rawSummary, ".")
+
+	return strings.Join(sentences[:len(sentences)-1], "."), nil
+}

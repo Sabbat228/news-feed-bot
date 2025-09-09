@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS articles
     link VARCHAR(255) NOT NULL UNIQUE,
     summary TEXT NOT NULL,
     published_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     posted_at TIMESTAMP
     );
 -- +goose StatementEnd

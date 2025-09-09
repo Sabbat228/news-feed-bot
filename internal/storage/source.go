@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
 	"github.com/samber/lo"
 	"news-feed-bot/internal/model"
 	"time"
@@ -10,6 +11,10 @@ import (
 
 type SourcePostgresStorage struct {
 	db *sqlx.DB
+}
+
+func NewSourcePostgresStorage(db *sqlx.DB) *SourcePostgresStorage {
+	return &SourcePostgresStorage{db: db}
 }
 
 func (s *SourcePostgresStorage) Sources(ctx context.Context) ([]model.Source, error) {
@@ -20,10 +25,18 @@ func (s *SourcePostgresStorage) Sources(ctx context.Context) ([]model.Source, er
 	defer conn.Close()
 
 	var sources []dbSource
-	if err := conn.SelectContext(ctx, &sources, "SELECT * FROM source"); err != nil {
+	if err := conn.SelectContext(ctx, &sources, "SELECT * FROM sources"); err != nil {
+		return nil, err
 	}
 
-	return lo.Map(sources, func(source dbSource, _ int) model.Source { return model.Source(source) }), nil
+	return lo.Map(sources, func(source dbSource, _ int) model.Source {
+		return model.Source{
+			ID:        source.ID,
+			Name:      source.Name,
+			FeedURL:   source.FeedURL,
+			CreatedAt: source.CreatedAt,
+		}
+	}), nil
 }
 
 func (s *SourcePostgresStorage) SourceByID(ctx context.Context, id int64) (*model.Source, error) {
@@ -32,11 +45,18 @@ func (s *SourcePostgresStorage) SourceByID(ctx context.Context, id int64) (*mode
 		return nil, err
 	}
 	defer conn.Close()
+
 	var source dbSource
-	if err := conn.GetContext(ctx, &source, "SELECT * FROM source WHERE id = $1", id); err != nil {
+	if err := conn.GetContext(ctx, &source, "SELECT * FROM sources WHERE id = $1", id); err != nil {
 		return nil, err
 	}
-	return (*model.Source)(&source), nil
+
+	return &model.Source{
+		ID:        source.ID,
+		Name:      source.Name,
+		FeedURL:   source.FeedURL,
+		CreatedAt: source.CreatedAt,
+	}, nil
 }
 
 func (s *SourcePostgresStorage) Add(ctx context.Context, source model.Source) (int64, error) {
@@ -50,19 +70,16 @@ func (s *SourcePostgresStorage) Add(ctx context.Context, source model.Source) (i
 
 	row := conn.QueryRowxContext(
 		ctx,
-		`INSERT INTO sources (name, feed_url, created_at) VALUES ($1, $2, &3) RETURNING id`,
+		`INSERT INTO sources (name, feed_url, created_at) VALUES ($1, $2, $3) RETURNING id`,
 		source.Name,
 		source.FeedURL,
-		source.CreatedAt,
+		time.Now(),
 	)
-	err = row.Err()
-	{
+
+	if err := row.Scan(&id); err != nil {
 		return 0, err
 	}
 
-	if err := row.StructScan(&id); err != nil {
-		return 0, err
-	}
 	return id, nil
 }
 
@@ -83,5 +100,6 @@ type dbSource struct {
 	ID        int64     `db:"id"`
 	Name      string    `db:"name"`
 	FeedURL   string    `db:"feed_url"`
-	CreatedAt time.Time `db:"created"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
